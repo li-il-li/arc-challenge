@@ -1,0 +1,3 @@
+[tasks.start]
+run = "uv run modal run modal-start.py"
+description = "Run modal-start.py"
