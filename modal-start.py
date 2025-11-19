@@ -11,7 +11,8 @@ MODEL_DIR = "/cache"
 # Parameter
 SEED=42
 BATCH_SIZE=10
-
+LEARNING_RATE=5e-5
+EPOCHS=3
 
 @app.function(
     image=image,
@@ -59,14 +60,40 @@ def predict_masked(text: str):
     ppp('Model', model)
 
     # Load optimizer
-    adamW = torch.optim.AdamW(model.parameters())
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+    
+    # Training Loop
+    model.train()
+    
+    for epoch in range(EPOCHS):
+        for i, batch in enumerate(train_dataloader):
+            inputs = tokenizer(batch['text'], return_tensors='pt', padding=True, truncation=True, max_length=512) # Up to 8192 tokens
+            inputs = inputs.to(device=device)
+            ppp('Inputs 1', inputs)
+            
+            # CREATE MASKS - This is missing!
+            labels = inputs['input_ids'].clone()
+            rand = torch.rand(inputs['input_ids'].shape)
+            mask_arr = (rand < 0.15) * (inputs['input_ids'] != tokenizer.pad_token_id)  # Mask 15% of tokens
+            inputs['input_ids'][mask_arr] = tokenizer.mask_token_id
 
-    print(f"Running inference on: {text}")
-    inputs = tokenizer(text, return_tensors="pt").to(device)
+            # Set non-masked positions to -100 (tells loss function to IGNORE them)
+            labels[~mask_arr] = -100
 
-    with torch.no_grad():
-        outputs = model(**inputs)
-        ppp('Outputs', outputs)
+            # Forward pass with original tokens as labels
+            outputs = model(**inputs, labels=labels)
+            loss = outputs.loss
+            
+            # Backward pass
+            optimizer.zero_grad() # Clear old gradients
+            loss.backward() # Compute new gradients
+            optimizer.step() # Update weigths
+            
+
+    # Inference
+    # with torch.no_grad():
+    #     outputs = model(**inputs)
+    #     ppp('Outputs', outputs)
 
     #print(f"Printing out model output...")
     #pprint(outputs)
